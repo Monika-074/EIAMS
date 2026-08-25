@@ -9,9 +9,20 @@ check_firewall() {
     echo "========== FIREWALL STATUS =========="
 
     if command -v ufw &>/dev/null; then
-        sudo ufw status verbose
+
+        firewall_status=$(sudo ufw status | head -1)
+
+        echo "$firewall_status"
+
+        if echo "$firewall_status" | grep -qi "active"; then
+            echo "Security Status: PROTECTED"
+        else
+            echo "Security Status: WARNING - Firewall inactive"
+        fi
+
     else
-        echo "UFW is not installed."
+        echo "Status: NOT INSTALLED"
+        echo "Security Status: WARNING"
     fi
 
     echo
@@ -23,20 +34,22 @@ check_ssh() {
 
     if [ -f /etc/ssh/sshd_config ]; then
 
-        echo "SSH configuration file found."
+        echo "SSH server configuration found."
 
         echo
         echo "PermitRootLogin:"
-        grep -Ei "^[[:space:]]*PermitRootLogin" /etc/ssh/sshd_config || \
+        grep -Ei "^[[:space:]]*PermitRootLogin" \
+            /etc/ssh/sshd_config || \
             echo "Not explicitly configured"
 
         echo
         echo "PasswordAuthentication:"
-        grep -Ei "^[[:space:]]*PasswordAuthentication" /etc/ssh/sshd_config || \
+        grep -Ei "^[[:space:]]*PasswordAuthentication" \
+            /etc/ssh/sshd_config || \
             echo "Not explicitly configured"
 
     else
-        echo "SSH server configuration not found."
+        echo "Status: NOT INSTALLED"
     fi
 
     echo
@@ -46,14 +59,24 @@ check_failed_logins() {
     echo
     echo "========== FAILED LOGIN ATTEMPTS =========="
 
-    if command -v journalctl &>/dev/null; then
-        journalctl --no-pager | grep -Ei "failed password|authentication failure" | tail -10
+    failed_logins=0
 
-        if [ ${PIPESTATUS[0]} -ne 0 ]; then
-            echo "No recent failed login records found."
-        fi
+    if command -v journalctl &>/dev/null; then
+
+        failed_logins=$(journalctl --no-pager 2>/dev/null | \
+            grep -Ei "failed password|authentication failure" | \
+            wc -l)
+
+    fi
+
+    echo "Failed login attempts: $failed_logins"
+
+    if [ "$failed_logins" -eq 0 ]; then
+        echo "Security Status: GOOD"
+    elif [ "$failed_logins" -le 5 ]; then
+        echo "Security Status: WARNING"
     else
-        echo "journalctl is not available."
+        echo "Security Status: CRITICAL"
     fi
 
     echo
@@ -94,40 +117,225 @@ check_sensitive_permissions() {
 
     echo
     echo "/etc/shadow:"
-    ls -l /etc/shadow 2>/dev/null || echo "Cannot access /etc/shadow"
+    ls -l /etc/shadow 2>/dev/null || \
+        echo "Cannot access /etc/shadow"
 
     echo
 }
 
 security_summary() {
-    echo
-    echo "=========================================="
-    echo "          SECURITY SUMMARY"
-    echo "=========================================="
 
     echo
-    echo "[1] Firewall:"
+    echo "=========================================="
+    echo "          EIAMS SECURITY SUMMARY"
+    echo "=========================================="
+
+    score=0
+
+    # ==========================================
+    # 1. Firewall
+    # ==========================================
+
+    echo
+    echo "[1] Firewall"
+
     if command -v ufw &>/dev/null; then
-        sudo ufw status | head -1
+
+        firewall_status=$(sudo ufw status | head -1)
+
+        if echo "$firewall_status" | grep -qi "active"; then
+
+            echo "Status: ACTIVE"
+            echo "Risk: LOW"
+
+            score=$((score + 20))
+
+        else
+
+            echo "Status: INACTIVE"
+            echo "Risk: HIGH"
+
+        fi
+
     else
-        echo "UFW not installed"
+
+        echo "Status: NOT INSTALLED"
+        echo "Risk: MEDIUM"
+
     fi
 
-    echo
-    echo "[2] Listening Ports:"
-    ss -tuln | grep LISTEN | wc -l
+    # ==========================================
+    # 2. SSH
+    # ==========================================
 
     echo
-    echo "[3] Sudo Group:"
-    getent group sudo
+    echo "[2] SSH Server"
+
+    if [ -f /etc/ssh/sshd_config ]; then
+
+        echo "Status: INSTALLED"
+
+        if grep -Eiq \
+            "^[[:space:]]*PermitRootLogin[[:space:]]+yes" \
+            /etc/ssh/sshd_config; then
+
+            echo "Root Login: ENABLED"
+            echo "Risk: HIGH"
+
+        else
+
+            echo "Root Login: NOT ENABLED"
+            echo "Risk: LOW"
+
+            score=$((score + 20))
+
+        fi
+
+    else
+
+        echo "Status: NOT INSTALLED"
+        echo "Risk: LOW"
+
+        score=$((score + 20))
+
+    fi
+
+    # ==========================================
+    # 3. Failed Login Attempts
+    # ==========================================
 
     echo
-    echo "[4] Shadow File Permissions:"
-    ls -l /etc/shadow 2>/dev/null || echo "Access denied"
+    echo "[3] Failed Login Attempts"
+
+    failed_logins=0
+
+    if command -v journalctl &>/dev/null; then
+
+        failed_logins=$(journalctl --no-pager 2>/dev/null | \
+            grep -Ei "failed password|authentication failure" | \
+            wc -l)
+
+    fi
+
+    echo "Detected Attempts: $failed_logins"
+
+    if [ "$failed_logins" -eq 0 ]; then
+
+        echo "Risk: LOW"
+        score=$((score + 20))
+
+    elif [ "$failed_logins" -le 5 ]; then
+
+        echo "Risk: MEDIUM"
+
+    else
+
+        echo "Risk: HIGH"
+
+    fi
+
+    # ==========================================
+    # 4. Network Ports
+    # ==========================================
+
+    echo
+    echo "[4] Network Ports"
+
+    if command -v ss &>/dev/null; then
+
+        listening_ports=$(ss -tuln 2>/dev/null | \
+            grep -E "LISTEN|UNCONN" | \
+            wc -l)
+
+    else
+
+        listening_ports=0
+
+    fi
+
+    echo "Open Endpoints: $listening_ports"
+
+    if [ "$listening_ports" -le 10 ]; then
+
+        echo "Risk: LOW"
+        score=$((score + 20))
+
+    elif [ "$listening_ports" -le 20 ]; then
+
+        echo "Risk: MEDIUM"
+
+    else
+
+        echo "Risk: HIGH"
+
+    fi
+
+    # ==========================================
+    # 5. Sensitive Files
+    # ==========================================
+
+    echo
+    echo "[5] Sensitive File Permissions"
+
+    if [ -f /etc/shadow ]; then
+
+        shadow_permissions=$(stat -c "%a" /etc/shadow 2>/dev/null)
+
+        echo "/etc/shadow: $shadow_permissions"
+
+        if [ "$shadow_permissions" -le 640 ]; then
+
+            echo "Risk: LOW"
+            score=$((score + 20))
+
+        else
+
+            echo "Risk: HIGH"
+
+        fi
+
+    else
+
+        echo "Status: UNABLE TO CHECK"
+        echo "Risk: UNKNOWN"
+
+    fi
+
+    # ==========================================
+    # Security Score
+    # ==========================================
+
+    echo
+    echo "=========================================="
+    echo "          SECURITY SCORE"
+    echo "=========================================="
+    echo
+
+    echo "Security Score: $score/100"
+
+    if [ "$score" -ge 80 ]; then
+
+        security_status="GOOD"
+
+    elif [ "$score" -ge 60 ]; then
+
+        security_status="WARNING"
+
+    else
+
+        security_status="CRITICAL"
+
+    fi
+
+    echo "Security Status: $security_status"
 
     echo
     echo "=========================================="
 }
+
+# ==========================================
+# SECURITY MENU
+# ==========================================
 
 while true; do
 
@@ -149,7 +357,7 @@ while true; do
 
     read -p "Enter your choice: " choice
 
-    case $choice in
+    case "$choice" in
 
         1)
             check_firewall
