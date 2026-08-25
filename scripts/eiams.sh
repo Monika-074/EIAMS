@@ -27,7 +27,8 @@ while true; do
     echo "11. Process Management"
     echo "12. Database Monitoring"
     echo "13. Application Monitoring"
-    echo "14. Exit"
+    echo "14. Alert & Incident Management"
+    echo "15. Exit"
     echo
 
     read -p "Enter your choice: " choice
@@ -89,6 +90,10 @@ while true; do
             ;;
 
         14)
+            ./modules/alert_management.sh
+            ;;
+
+        15)
             echo
             echo "Exiting EIAMS..."
             exit 0
