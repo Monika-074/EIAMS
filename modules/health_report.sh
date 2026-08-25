@@ -4,57 +4,151 @@
 # EIAMS - Infrastructure Health Report
 # ==========================================
 
-# Get the EIAMS project directory
+# Find EIAMS project directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-LOG_FILE="$PROJECT_DIR/logs/eiams.log"
+LOG_DIR="$PROJECT_DIR/logs"
+LOG_FILE="$LOG_DIR/eiams.log"
+CONFIG_FILE="$PROJECT_DIR/config/config.conf"
 
-mkdir -p "$PROJECT_DIR/logs"
+mkdir -p "$LOG_DIR"
 
-echo "==========================================" | tee -a "$LOG_FILE"
-echo "       EIAMS INFRASTRUCTURE HEALTH"
-echo "==========================================" | tee -a "$LOG_FILE"
-echo "Generated: $(date)" | tee -a "$LOG_FILE"
-echo
-
-echo "Hostname:"
-hostname | tee -a "$LOG_FILE"
-echo
-
-echo "System Uptime:"
-uptime -p | tee -a "$LOG_FILE"
-echo
-
-echo "CPU Information:"
-lscpu | grep -E "Model name|CPU\(s\)" | head -2 | tee -a "$LOG_FILE"
-echo
-
-echo "Memory Usage:"
-free -h | tee -a "$LOG_FILE"
-echo
-
-echo "Disk Usage:"
-df -h / | tee -a "$LOG_FILE"
-echo
-
-echo "Running Services:"
-systemctl list-units --type=service --state=running --no-pager | head -15 | tee -a "$LOG_FILE"
-echo
-
-echo "Listening Network Ports:"
-ss -tuln | tee -a "$LOG_FILE"
-echo
-
-echo "Firewall:"
-if command -v ufw &>/dev/null; then
-    sudo ufw status | tee -a "$LOG_FILE"
+# Load configuration
+if [ -f "$CONFIG_FILE" ]; then
+    source "$CONFIG_FILE"
 else
-    echo "UFW not installed" | tee -a "$LOG_FILE"
+    echo "ERROR: Configuration file not found: $CONFIG_FILE"
+    exit 1
 fi
 
-echo
-echo "==========================================" | tee -a "$LOG_FILE"
-echo "           HEALTH REPORT COMPLETE"
-echo "==========================================" | tee -a "$LOG_FILE"
+# ==========================================
+# Helper Functions
+# ==========================================
 
+get_cpu_usage() {
+    top -bn1 | grep "Cpu(s)" | \
+        awk '{print 100 - $8}' | cut -d. -f1
+}
+
+get_memory_usage() {
+    free | awk '/Mem:/ {printf "%.0f", ($3/$2) * 100}'
+}
+
+get_disk_usage() {
+    df / | awk 'NR==2 {gsub("%",""); print $5}'
+}
+
+check_status() {
+    local value=$1
+    local warning=$2
+    local critical=$3
+
+    if [ "$value" -ge "$critical" ]; then
+        echo "CRITICAL"
+    elif [ "$value" -ge "$warning" ]; then
+        echo "WARNING"
+    else
+        echo "OK"
+    fi
+}
+
+# ==========================================
+# Collect Metrics
+# ==========================================
+
+CPU_USAGE=$(get_cpu_usage)
+MEMORY_USAGE=$(get_memory_usage)
+DISK_USAGE=$(get_disk_usage)
+
+CPU_STATUS=$(check_status "$CPU_USAGE" "$CPU_WARNING" "$CPU_CRITICAL")
+MEMORY_STATUS=$(check_status "$MEMORY_USAGE" "$MEMORY_WARNING" "$MEMORY_CRITICAL")
+DISK_STATUS=$(check_status "$DISK_USAGE" "$DISK_WARNING" "$DISK_CRITICAL")
+
+# ==========================================
+# Determine Overall Status
+# ==========================================
+
+OVERALL_STATUS="OK"
+
+if [ "$CPU_STATUS" = "CRITICAL" ] || \
+   [ "$MEMORY_STATUS" = "CRITICAL" ] || \
+   [ "$DISK_STATUS" = "CRITICAL" ]; then
+
+    OVERALL_STATUS="CRITICAL"
+
+elif [ "$CPU_STATUS" = "WARNING" ] || \
+     [ "$MEMORY_STATUS" = "WARNING" ] || \
+     [ "$DISK_STATUS" = "WARNING" ]; then
+
+    OVERALL_STATUS="WARNING"
+fi
+
+# ==========================================
+# Generate Report
+# ==========================================
+
+{
+    echo
+    echo "=========================================="
+    echo "       EIAMS INFRASTRUCTURE HEALTH"
+    echo "=========================================="
+    echo "Generated: $(date)"
+    echo
+
+    echo "Hostname:"
+    hostname
+    echo
+
+    echo "System Uptime:"
+    uptime -p
+    echo
+
+    echo "CPU Usage:"
+    echo "${CPU_USAGE}%"
+    echo "Status: $CPU_STATUS"
+    echo
+
+    echo "Memory Usage:"
+    echo "${MEMORY_USAGE}%"
+    echo "Status: $MEMORY_STATUS"
+    echo
+
+    echo "Disk Usage:"
+    echo "${DISK_USAGE}%"
+    echo "Status: $DISK_STATUS"
+    echo
+
+    echo "Running Services:"
+    systemctl list-units --type=service --state=running --no-pager | head -15
+    echo
+
+    echo "Listening Network Ports:"
+    ss -tuln
+    echo
+
+    echo "Firewall:"
+    if command -v ufw &>/dev/null; then
+        sudo ufw status
+    else
+        echo "UFW not installed"
+    fi
+
+    echo
+
+    echo "=========================================="
+    echo "           OVERALL SYSTEM STATUS"
+    echo "=========================================="
+    echo
+    echo "CPU:       $CPU_STATUS"
+    echo "Memory:    $MEMORY_STATUS"
+    echo "Disk:      $DISK_STATUS"
+    echo
+    echo "Overall Health: $OVERALL_STATUS"
+    echo
+    echo "=========================================="
+    echo "           HEALTH REPORT COMPLETE"
+    echo "=========================================="
+    echo
+
+} | tee -a "$LOG_FILE"
