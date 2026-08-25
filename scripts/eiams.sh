@@ -27,10 +27,11 @@ while true; do
     echo "11. Process Management"
     echo "12. Database Monitoring"
     echo "13. Application Monitoring"
-    echo "14. Alert & Incident Management"
-    echo "15. Service Dependency Monitoring"
-    echo "16. Dashboard"
-    echo "17. Exit"
+    echo "14. Network Monitoring"
+    echo "15. Alert & Incident Management"
+    echo "16. Service Dependency Monitoring"
+    echo "17. Dashboard"
+    echo "18. Exit"
     echo
 
     read -p "Enter your choice: " choice
@@ -92,19 +93,23 @@ while true; do
             ;;
 
         14)
-            ./modules/alert_management.sh
+            ./modules/network_monitoring.sh
             ;;
 
         15)
-            ./modules/dependency_monitoring.sh
+            ./modules/alert_management.sh
             ;;
 
         16)
+            ./modules/dependency_monitoring.sh
+            ;;
+
+        17)
             ./modules/dashboard.sh
             ;;
 
 
-        17)
+        18)
             echo
             echo "Exiting EIAMS..."
             exit 0
