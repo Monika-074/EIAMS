@@ -23,12 +23,14 @@ while true; do
     echo "7. Backup Management"
     echo "8. System Information"
     echo "9. Automation Management"
-    echo "10. Exit"
+    echo "10. Configuration Management"
+    echo "11. Process Management"
+    echo "12. Exit"
     echo
 
     read -p "Enter your choice: " choice
 
-    case $choice in
+    case "$choice" in
 
         1)
             ./modules/user_management.sh
@@ -69,6 +71,14 @@ while true; do
             ;;
 
         10)
+            ./modules/config_management.sh
+            ;;
+
+        11)
+            ./modules/process_management.sh
+            ;;
+
+        12)
             echo
             echo "Exiting EIAMS..."
             exit 0
