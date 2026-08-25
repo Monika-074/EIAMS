@@ -19,7 +19,8 @@ while true; do
     echo "3. System Monitoring"
     echo "4. Security Check"
     echo "5. Infrastructure Health Report"
-    echo "6. Exit"
+    echo "6. Log Management"
+    echo "7. Exit"
     echo
 
     read -p "Enter your choice: " choice
@@ -49,6 +50,10 @@ while true; do
             ;;
 
         6)
+            ./modules/log_management.sh
+            ;;
+
+        7)
             echo
             echo "Exiting EIAMS..."
             exit 0
