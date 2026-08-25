@@ -4,9 +4,13 @@
 # EIAMS - Infrastructure Health Report
 # ==========================================
 
-LOG_FILE="./logs/eiams.log"
+# Get the EIAMS project directory
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
-mkdir -p ./logs
+LOG_FILE="$PROJECT_DIR/logs/eiams.log"
+
+mkdir -p "$PROJECT_DIR/logs"
 
 echo "==========================================" | tee -a "$LOG_FILE"
 echo "       EIAMS INFRASTRUCTURE HEALTH"
