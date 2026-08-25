@@ -25,7 +25,9 @@ while true; do
     echo "9. Automation Management"
     echo "10. Configuration Management"
     echo "11. Process Management"
-    echo "12. Exit"
+    echo "12. Database Monitoring"
+    echo "13. Application Monitoring"
+    echo "14. Exit"
     echo
 
     read -p "Enter your choice: " choice
@@ -78,7 +80,15 @@ while true; do
             ./modules/process_management.sh
             ;;
 
-        12)
+        12) 
+            ./modules/database_monitoring.sh
+            ;;
+
+        13)
+            ./modules/application_monitoring.sh
+            ;;
+
+        14)
             echo
             echo "Exiting EIAMS..."
             exit 0
